@@ -1,14 +1,15 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import Car, UserProfile
+from .models import Booking, Car, EmailLog, LogReport, UserProfile
 
 
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='profile.role', default='renter')
-    middleName = serializers.CharField(source='profile.middle_name', allow_blank=True, required=False)
-    sex = serializers.CharField(source='profile.sex', allow_blank=True, required=False)
-    dateOfBirth = serializers.DateField(source='profile.date_of_birth', allow_null=True, required=False)
+    role = serializers.SerializerMethodField()
+    middleName = serializers.SerializerMethodField()
+    sex = serializers.SerializerMethodField()
+    dateOfBirth = serializers.SerializerMethodField()
     firstName = serializers.CharField(source='first_name', allow_blank=True, required=False)
     lastName = serializers.CharField(source='last_name', allow_blank=True, required=False)
     fullName = serializers.SerializerMethodField()
@@ -31,9 +32,26 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
     def get_fullName(self, obj):
-        parts = [obj.first_name or '', getattr(obj.profile, 'middle_name', '') or '', obj.last_name or '']
+        profile = getattr(obj, 'profile', None)
+        parts = [obj.first_name or '', getattr(profile, 'middle_name', '') or '', obj.last_name or '']
         full_name = ' '.join([part for part in parts if part]).strip()
         return full_name or obj.username
+
+    def get_role(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'role', 'renter')
+
+    def get_middleName(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'middle_name', '') or ''
+
+    def get_sex(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'sex', '') or ''
+
+    def get_dateOfBirth(self, obj):
+        profile = getattr(obj, 'profile', None)
+        return getattr(profile, 'date_of_birth', None)
 
 
 class UserRegisterSerializer(serializers.ModelSerializer):
@@ -167,3 +185,232 @@ class CarSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = request.user
         return super().create(validated_data)
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class BookingSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    status = serializers.CharField(required=False)
+    createdAt = serializers.DateTimeField(read_only=True)
+    updatedAt = serializers.DateTimeField(read_only=True)
+
+    def to_internal_value(self, data):
+        return dict(data.items()) if hasattr(data, 'items') else dict(data)
+
+    def to_representation(self, instance):
+        data = instance.data or {}
+        return {
+            'id': instance.id,
+            'renterId': instance.renter_id,
+            'ownerId': instance.owner_id,
+            'vehicleId': instance.vehicle_id,
+            'status': instance.status,
+            'rentalId': instance.rental_id,
+            'createdAt': instance.created_at,
+            'updatedAt': instance.updated_at,
+            **data,
+        }
+
+    def create(self, validated_data):
+        data = dict(validated_data)
+        status_value = data.pop('status', 'pending')
+        renter_id = data.pop('renter', None) or data.pop('renterId', None)
+        owner_id = data.pop('owner', None) or data.pop('ownerId', None)
+        vehicle_id = data.pop('vehicle', None) or data.pop('vehicleId', None)
+        rental_id = data.pop('rental_id', '')
+        renter = renter_id if isinstance(renter_id, User) else User.objects.filter(pk=renter_id).first() if renter_id else None
+        owner = owner_id if isinstance(owner_id, User) else User.objects.filter(pk=owner_id).first() if owner_id else None
+        vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() if vehicle_id else None
+        return Booking.objects.create(
+            renter=renter,
+            owner=owner,
+            vehicle=vehicle,
+            status=status_value,
+            rental_id=rental_id,
+            data=data,
+        )
+
+    def update(self, instance, validated_data):
+        data = dict(instance.data or {})
+        incoming = dict(validated_data)
+        if 'status' in incoming:
+            instance.status = incoming.pop('status')
+        renter_id = incoming.pop('renter', None) or incoming.pop('renterId', None)
+        owner_id = incoming.pop('owner', None) or incoming.pop('ownerId', None)
+        vehicle_id = incoming.pop('vehicle', None) or incoming.pop('vehicleId', None)
+        if renter_id is not None:
+            instance.renter = renter_id if isinstance(renter_id, User) else User.objects.filter(pk=renter_id).first() or instance.renter
+        if owner_id is not None:
+            instance.owner = owner_id if isinstance(owner_id, User) else User.objects.filter(pk=owner_id).first() or instance.owner
+        if vehicle_id is not None:
+            instance.vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() or instance.vehicle
+        if 'rental_id' in incoming:
+            instance.rental_id = incoming.pop('rental_id')
+        data.update(incoming)
+        instance.data = data
+        instance.save()
+        return instance
+
+
+class LogReportSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    type = serializers.CharField(required=False)
+    createdAt = serializers.DateTimeField(read_only=True)
+    updatedAt = serializers.DateTimeField(read_only=True)
+    checkout = serializers.JSONField(required=False, allow_null=True)
+    comments = serializers.JSONField(required=False)
+
+    def to_internal_value(self, data):
+        return dict(data.items()) if hasattr(data, 'items') else dict(data)
+
+    def to_representation(self, instance):
+        data = instance.data or {}
+        return {
+            'id': instance.id,
+            'type': instance.report_type,
+            'renterId': instance.reporter_id,
+            'vehicleId': instance.vehicle_id,
+            'rentalId': instance.rental_id,
+            'checkout': instance.checkout,
+            'comments': instance.comments or [],
+            'createdAt': instance.created_at,
+            'updatedAt': instance.updated_at,
+            **data,
+        }
+
+    def create(self, validated_data):
+        data = dict(validated_data)
+        report_type = data.pop('type', 'checkin')
+        reporter_id = data.pop('reporter', None) or data.pop('renterId', None) or data.pop('reporterId', None)
+        vehicle_id = data.pop('vehicle', None) or data.pop('vehicleId', None)
+        rental_id = data.pop('rental_id', '')
+        checkout = data.pop('checkout', None)
+        comments = data.pop('comments', [])
+        reporter = reporter_id if isinstance(reporter_id, User) else User.objects.filter(pk=reporter_id).first() if reporter_id else None
+        vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() if vehicle_id else None
+        return LogReport.objects.create(
+            reporter=reporter,
+            vehicle=vehicle,
+            rental_id=rental_id,
+            report_type=report_type,
+            data=data,
+            checkout=checkout,
+            comments=comments or [],
+        )
+
+    def update(self, instance, validated_data):
+        data = dict(instance.data or {})
+        incoming = dict(validated_data)
+        if 'type' in incoming:
+            instance.report_type = incoming.pop('type')
+        reporter_id = incoming.pop('reporter', None) or incoming.pop('renterId', None) or incoming.pop('reporterId', None)
+        vehicle_id = incoming.pop('vehicle', None) or incoming.pop('vehicleId', None)
+        if reporter_id is not None:
+            instance.reporter = reporter_id if isinstance(reporter_id, User) else User.objects.filter(pk=reporter_id).first() or instance.reporter
+        if vehicle_id is not None:
+            instance.vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() or instance.vehicle
+        if 'rental_id' in incoming:
+            instance.rental_id = incoming.pop('rental_id')
+        if 'checkout' in incoming:
+            instance.checkout = incoming.pop('checkout')
+        if 'comments' in incoming:
+            instance.comments = incoming.pop('comments')
+        data.update(incoming)
+        instance.data = data
+        instance.save()
+        return instance
+
+
+class EmailLogSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    type = serializers.CharField(required=False)
+    sentAt = serializers.DateTimeField(read_only=True)
+
+    def to_internal_value(self, data):
+        return dict(data.items()) if hasattr(data, 'items') else dict(data)
+
+    def to_representation(self, instance):
+        data = instance.data or {}
+        return {
+            'id': instance.id,
+            'to': instance.recipient,
+            'subject': instance.subject,
+            'body': instance.body,
+            'type': instance.log_type,
+            'status': instance.status,
+            'sentAt': instance.sent_at,
+            **data,
+        }
+
+    def create(self, validated_data):
+        data = dict(validated_data)
+        log_type = data.pop('type', 'notification')
+        recipient = data.pop('to', data.pop('recipient', ''))
+        subject = data.pop('subject', '')
+        body = data.pop('body', '')
+        status_value = data.pop('status', 'sent')
+        return EmailLog.objects.create(
+            recipient=recipient,
+            subject=subject,
+            body=body,
+            log_type=log_type,
+            status=status_value,
+            data=data,
+        )
+
+    def update(self, instance, validated_data):
+        data = dict(instance.data or {})
+        incoming = dict(validated_data)
+        if 'type' in incoming:
+            instance.log_type = incoming.pop('type')
+        if 'to' in incoming or 'recipient' in incoming:
+            instance.recipient = incoming.pop('to', incoming.pop('recipient', instance.recipient))
+        if 'subject' in incoming:
+            instance.subject = incoming.pop('subject')
+        if 'body' in incoming:
+            instance.body = incoming.pop('body')
+        if 'status' in incoming:
+            instance.status = incoming.pop('status')
+        data.update(incoming)
+        instance.data = data
+        instance.save()
+        return instance
+
+
+class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
+    # Keep the existing request shape while allowing explicit email too.
+    username = serializers.CharField(required=False, write_only=True)
+    email = serializers.EmailField(required=False, write_only=True)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and not data.get('username') and data.get('email'):
+            data = data.copy()
+            data['username'] = data.get('email')
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        login_value = (attrs.get('username') or attrs.get('email') or '').strip().lower()
+        password = attrs.get('password')
+
+        if not login_value or not password:
+            raise serializers.ValidationError({'detail': 'Both username/email and password are required.'})
+
+        username_value = login_value
+        if '@' in login_value:
+            user = User.objects.filter(email__iexact=login_value).first()
+            if user:
+                username_value = user.username
+
+        token_attrs = {
+            self.username_field: username_value,
+            'password': password,
+        }
+        return super().validate(token_attrs)

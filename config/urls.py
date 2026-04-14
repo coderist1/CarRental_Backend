@@ -26,8 +26,14 @@ def root_view(request):
             '/api/health/',
             '/api/register/',
             '/api/login/',
+            '/api/password/change/',
+            '/api/password/reset/',
             '/api/me/',
             '/api/cars/',
+            '/api/bookings/',
+            '/api/log-reports/',
+            '/api/email-logs/',
+            '/api/users/',
         ],
     })
 
