@@ -13,10 +13,6 @@ TO DO FIRST:
 4. Apply Migrations: python manage.py migrate
 5. Run Development Server: python manage.py runserver
 
-
-C:/Users/Acer/AppData/Local/Python/bin/python.exe -m pip install -r requirements.txt
-C:/Users/Acer/AppData/Local/Python/bin/python.exe manage.py migrate
-C:/Users/Acer/AppData/Local/Python/bin/python.exe manage.py runserver 0.0.0.0:8000
 ```
 
 For web/mobile clients on the same LAN, use:
