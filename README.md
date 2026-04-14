@@ -11,7 +11,7 @@ TO DO FIRST:
 2. Activate: venv\Scripts\activate
 3. Install Dependencies: pip install -r requirements.txt
 4. Apply Migrations: python manage.py migrate
-5. Run Development Server: python manage.py runserver
+5. Run Development Server: python manage.py runserver 0.0.0.0:8000
 
 ```
 
