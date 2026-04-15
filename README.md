@@ -5,14 +5,9 @@ This backend serves the shared API for the IDRMS web and mobile apps.
 ## Setup
 
 ```bash
-
-TO DO FIRST:
-1. Create virtual environment: pythom -m venv venv
-2. Activate: venv\Scripts\activate
-3. Install Dependencies: pip install -r requirements.txt
-4. Apply Migrations: python manage.py migrate
-5. Run Development Server: python manage.py runserver 0.0.0.0:8000
-
+C:/Users/Acer/AppData/Local/Python/bin/python.exe -m pip install -r requirements.txt
+C:/Users/Acer/AppData/Local/Python/bin/python.exe manage.py migrate
+C:/Users/Acer/AppData/Local/Python/bin/python.exe manage.py runserver 0.0.0.0:8000
 ```
 
 For web/mobile clients on the same LAN, use:
