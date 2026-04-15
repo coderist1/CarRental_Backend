@@ -67,6 +67,27 @@ class ApiEndpointTests(APITestCase):
 		self.assertIn('access', response.data)
 		self.assertIn('refresh', response.data)
 
+	def test_me_accepts_token_auth_header(self):
+		User.objects.create_user(
+			username='student4b',
+			email='student4b@example.com',
+			password='strongpass123',
+		)
+
+		login = self.client.post(
+			'/api/login/',
+			{'email': 'student4b@example.com', 'password': 'strongpass123'},
+			format='json',
+		)
+
+		response = self.client.get(
+			'/api/me/',
+			HTTP_AUTHORIZATION=f"Token {login.data['access']}",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data['email'], 'student4b@example.com')
+
 	def test_password_change_and_reset(self):
 		user = User.objects.create_user(
 			username='student5',
@@ -155,3 +176,20 @@ class ApiEndpointTests(APITestCase):
 		)
 		self.assertEqual(email_response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(EmailLog.objects.count(), 1)
+
+	def test_booking_invalid_renter_id_returns_400(self):
+		response = self.client.post(
+			'/api/bookings/',
+			{
+				'brand': 'Toyota',
+				'model': 'Vios',
+				'renterId': '123t1231',
+				'year': 2022,
+				'daily_rate': '1500.00',
+				'available': True,
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+		self.assertIn('renterId', response.data)

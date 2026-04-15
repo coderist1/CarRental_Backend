@@ -9,6 +9,8 @@ from .views import (
     EmailLogListCreateView,
     HealthCheckView,
     LoginView,
+    LoginRefreshView,
+    LoginVerifyView,
     LogReportDetailView,
     LogReportListCreateView,
     MeView,
@@ -22,6 +24,8 @@ from .views import (
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='token_obtain_pair'),
+    path('login/refresh/', LoginRefreshView.as_view(), name='token_refresh'),
+    path('login/verify/', LoginVerifyView.as_view(), name='token_verify'),
     path('password/change/', PasswordChangeView.as_view(), name='password-change'),
     path('password/reset/', PasswordResetView.as_view(), name='password-reset'),
     path('me/', MeView.as_view(), name='me'),
