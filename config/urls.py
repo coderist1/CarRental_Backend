@@ -14,6 +14,8 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
@@ -30,10 +32,15 @@ def root_view(request):
             '/api/password/reset/',
             '/api/me/',
             '/api/cars/',
+            '/api/cars/<id>/',
             '/api/bookings/',
+            '/api/bookings/<id>/',
             '/api/log-reports/',
+            '/api/log-reports/<id>/',
             '/api/email-logs/',
+            '/api/email-logs/<id>/',
             '/api/users/',
+            '/api/users/<id>/',
         ],
     })
 
@@ -42,3 +49,6 @@ urlpatterns = [
     path('api/', include('api.urls')),
     path('', root_view),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,8 +1,40 @@
-from django.contrib.auth.models import User
-from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+import base64
+import binascii
+import io
+import uuid
 
+from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
+from PIL import Image
+from rest_framework import serializers
 from .models import Booking, Car, EmailLog, LogReport, UserProfile
+
+
+class Base64ImageField(serializers.ImageField):
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            if data.startswith('data:') and ';base64,' in data:
+                data = data.split(';base64,')[1]
+            try:
+                decoded_file = base64.b64decode(data)
+            except (TypeError, binascii.Error):
+                self.fail('invalid_image')
+
+            file_name = str(uuid.uuid4())[:12]
+            file_extension = self.get_file_extension(file_name, decoded_file)
+            data = ContentFile(decoded_file, name=f"{file_name}.{file_extension}")
+
+        return super().to_internal_value(data)
+
+    def get_file_extension(self, file_name, decoded_file):
+        try:
+            image = Image.open(io.BytesIO(decoded_file))
+            extension = image.format.lower()
+        except Exception:
+            extension = None
+        if extension == 'jpeg':
+            extension = 'jpg'
+        return extension or 'png'
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -151,7 +183,10 @@ class CarSerializer(serializers.ModelSerializer):
     owner = serializers.SerializerMethodField()
     name = serializers.CharField(source='model', required=False)
     pricePerDay = serializers.DecimalField(source='daily_rate', max_digits=8, decimal_places=2, required=False)
+    image = Base64ImageField(required=False, allow_null=True, use_url=True)
+    imageUrl = serializers.SerializerMethodField(read_only=True)
     status = serializers.SerializerMethodField()
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
 
     class Meta:
         model = Car
@@ -166,9 +201,12 @@ class CarSerializer(serializers.ModelSerializer):
             'year',
             'daily_rate',
             'pricePerDay',
+            'image',
+            'imageUrl',
             'available',
             'status',
             'created_at',
+            'updatedAt',
         )
 
     def get_owner(self, obj):
@@ -176,6 +214,21 @@ class CarSerializer(serializers.ModelSerializer):
             return ''
         full_name = f"{obj.owner.first_name} {obj.owner.last_name}".strip()
         return full_name or obj.owner.username
+
+    def get_imageUrl(self, obj):
+        if not obj.image:
+            return ''
+        request = self.context.get('request')
+        if request is not None:
+            return request.build_absolute_uri(obj.image.url)
+        return obj.image.url
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        image_url = self.get_imageUrl(instance)
+        data['image'] = image_url
+        data['imageUrl'] = image_url
+        return data
 
     def get_status(self, obj):
         return 'available' if obj.available else 'rented'
@@ -188,6 +241,8 @@ class CarSerializer(serializers.ModelSerializer):
 
 
 class PasswordChangeSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False)
+    username = serializers.CharField(required=False)
     current_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True, min_length=8)
 
@@ -204,6 +259,26 @@ class BookingSerializer(serializers.Serializer):
 
     def to_internal_value(self, data):
         return dict(data.items()) if hasattr(data, 'items') else dict(data)
+
+    def _resolve_user(self, raw_value, field_name):
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, User):
+            return raw_value
+        try:
+            return User.objects.filter(pk=int(raw_value)).first()
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({field_name: 'Must be a valid numeric user id.'})
+
+    def _resolve_car(self, raw_value, field_name):
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, Car):
+            return raw_value
+        try:
+            return Car.objects.filter(pk=int(raw_value)).first()
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({field_name: 'Must be a valid numeric vehicle id.'})
 
     def to_representation(self, instance):
         data = instance.data or {}
@@ -226,9 +301,16 @@ class BookingSerializer(serializers.Serializer):
         owner_id = data.pop('owner', None) or data.pop('ownerId', None)
         vehicle_id = data.pop('vehicle', None) or data.pop('vehicleId', None)
         rental_id = data.pop('rental_id', '')
-        renter = renter_id if isinstance(renter_id, User) else User.objects.filter(pk=renter_id).first() if renter_id else None
-        owner = owner_id if isinstance(owner_id, User) else User.objects.filter(pk=owner_id).first() if owner_id else None
-        vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() if vehicle_id else None
+        renter = None
+        if renter_id is not None:
+            renter = self._resolve_user(renter_id, 'renterId')
+            if renter is None:
+                raise serializers.ValidationError({'renterId': f'User with id {renter_id} not found.'})
+        else:
+            raise serializers.ValidationError({'renterId': 'renterId (or renter) is required.'})
+
+        owner = self._resolve_user(owner_id, 'ownerId')
+        vehicle = self._resolve_car(vehicle_id, 'vehicleId')
         return Booking.objects.create(
             renter=renter,
             owner=owner,
@@ -247,11 +329,17 @@ class BookingSerializer(serializers.Serializer):
         owner_id = incoming.pop('owner', None) or incoming.pop('ownerId', None)
         vehicle_id = incoming.pop('vehicle', None) or incoming.pop('vehicleId', None)
         if renter_id is not None:
-            instance.renter = renter_id if isinstance(renter_id, User) else User.objects.filter(pk=renter_id).first() or instance.renter
+            resolved_renter = self._resolve_user(renter_id, 'renterId')
+            if resolved_renter is not None:
+                instance.renter = resolved_renter
         if owner_id is not None:
-            instance.owner = owner_id if isinstance(owner_id, User) else User.objects.filter(pk=owner_id).first() or instance.owner
+            resolved_owner = self._resolve_user(owner_id, 'ownerId')
+            if resolved_owner is not None:
+                instance.owner = resolved_owner
         if vehicle_id is not None:
-            instance.vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() or instance.vehicle
+            resolved_vehicle = self._resolve_car(vehicle_id, 'vehicleId')
+            if resolved_vehicle is not None:
+                instance.vehicle = resolved_vehicle
         if 'rental_id' in incoming:
             instance.rental_id = incoming.pop('rental_id')
         data.update(incoming)
@@ -270,6 +358,26 @@ class LogReportSerializer(serializers.Serializer):
 
     def to_internal_value(self, data):
         return dict(data.items()) if hasattr(data, 'items') else dict(data)
+
+    def _resolve_user(self, raw_value, field_name):
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, User):
+            return raw_value
+        try:
+            return User.objects.filter(pk=int(raw_value)).first()
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({field_name: 'Must be a valid numeric user id.'})
+
+    def _resolve_car(self, raw_value, field_name):
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, Car):
+            return raw_value
+        try:
+            return Car.objects.filter(pk=int(raw_value)).first()
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({field_name: 'Must be a valid numeric vehicle id.'})
 
     def to_representation(self, instance):
         data = instance.data or {}
@@ -294,8 +402,15 @@ class LogReportSerializer(serializers.Serializer):
         rental_id = data.pop('rental_id', '')
         checkout = data.pop('checkout', None)
         comments = data.pop('comments', [])
-        reporter = reporter_id if isinstance(reporter_id, User) else User.objects.filter(pk=reporter_id).first() if reporter_id else None
-        vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() if vehicle_id else None
+        reporter = None
+        if reporter_id is not None:
+            reporter = self._resolve_user(reporter_id, 'reporterId')
+            if reporter is None:
+                raise serializers.ValidationError({'reporterId': f'User with id {reporter_id} not found.'})
+        else:
+            raise serializers.ValidationError({'reporterId': 'reporterId (or renterId/reporter) is required.'})
+
+        vehicle = self._resolve_car(vehicle_id, 'vehicleId')
         return LogReport.objects.create(
             reporter=reporter,
             vehicle=vehicle,
@@ -314,9 +429,13 @@ class LogReportSerializer(serializers.Serializer):
         reporter_id = incoming.pop('reporter', None) or incoming.pop('renterId', None) or incoming.pop('reporterId', None)
         vehicle_id = incoming.pop('vehicle', None) or incoming.pop('vehicleId', None)
         if reporter_id is not None:
-            instance.reporter = reporter_id if isinstance(reporter_id, User) else User.objects.filter(pk=reporter_id).first() or instance.reporter
+            resolved_reporter = self._resolve_user(reporter_id, 'reporterId')
+            if resolved_reporter is not None:
+                instance.reporter = resolved_reporter
         if vehicle_id is not None:
-            instance.vehicle = vehicle_id if isinstance(vehicle_id, Car) else Car.objects.filter(pk=vehicle_id).first() or instance.vehicle
+            resolved_vehicle = self._resolve_car(vehicle_id, 'vehicleId')
+            if resolved_vehicle is not None:
+                instance.vehicle = resolved_vehicle
         if 'rental_id' in incoming:
             instance.rental_id = incoming.pop('rental_id')
         if 'checkout' in incoming:
@@ -385,32 +504,3 @@ class EmailLogSerializer(serializers.Serializer):
         return instance
 
 
-class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # Keep the existing request shape while allowing explicit email too.
-    username = serializers.CharField(required=False, write_only=True)
-    email = serializers.EmailField(required=False, write_only=True)
-
-    def to_internal_value(self, data):
-        if isinstance(data, dict) and not data.get('username') and data.get('email'):
-            data = data.copy()
-            data['username'] = data.get('email')
-        return super().to_internal_value(data)
-
-    def validate(self, attrs):
-        login_value = (attrs.get('username') or attrs.get('email') or '').strip().lower()
-        password = attrs.get('password')
-
-        if not login_value or not password:
-            raise serializers.ValidationError({'detail': 'Both username/email and password are required.'})
-
-        username_value = login_value
-        if '@' in login_value:
-            user = User.objects.filter(email__iexact=login_value).first()
-            if user:
-                username_value = user.username
-
-        token_attrs = {
-            self.username_field: username_value,
-            'password': password,
-        }
-        return super().validate(token_attrs)

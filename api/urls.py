@@ -8,10 +8,10 @@ from .views import (
     EmailLogDetailView,
     EmailLogListCreateView,
     HealthCheckView,
-    LoginView,
     LogReportDetailView,
     LogReportListCreateView,
     MeView,
+    LoginView,
     PasswordChangeView,
     PasswordResetView,
     RegisterView,
@@ -21,7 +21,7 @@ from .views import (
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
-    path('login/', LoginView.as_view(), name='token_obtain_pair'),
+    path('login/', LoginView.as_view(), name='login'),
     path('password/change/', PasswordChangeView.as_view(), name='password-change'),
     path('password/reset/', PasswordResetView.as_view(), name='password-reset'),
     path('me/', MeView.as_view(), name='me'),

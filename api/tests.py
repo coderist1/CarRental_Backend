@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Booking, EmailLog, LogReport
+from .models import Booking, Car, EmailLog, LogReport
 
 class ApiEndpointTests(APITestCase):
 	def test_register_user(self):
@@ -16,56 +16,17 @@ class ApiEndpointTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertTrue(User.objects.filter(username='student1').exists())
 
-	def test_login_user(self):
+	def test_me_accepts_email_query(self):
 		User.objects.create_user(
-			username='student2',
-			email='student2@example.com',
+			username='student4b',
+			email='student4b@example.com',
 			password='strongpass123',
 		)
 
-		response = self.client.post(
-			'/api/login/',
-			{'username': 'student2', 'password': 'strongpass123'},
-			format='json',
-		)
+		response = self.client.get('/api/me/', {'email': 'student4b@example.com'})
 
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
-		self.assertIn('access', response.data)
-		self.assertIn('refresh', response.data)
-
-	def test_login_user_with_email_in_username_field(self):
-		User.objects.create_user(
-			username='student3',
-			email='student3@example.com',
-			password='strongpass123',
-		)
-
-		response = self.client.post(
-			'/api/login/',
-			{'username': 'student3@example.com', 'password': 'strongpass123'},
-			format='json',
-		)
-
-		self.assertEqual(response.status_code, status.HTTP_200_OK)
-		self.assertIn('access', response.data)
-		self.assertIn('refresh', response.data)
-
-	def test_login_user_with_email_field(self):
-		User.objects.create_user(
-			username='student4',
-			email='student4@example.com',
-			password='strongpass123',
-		)
-
-		response = self.client.post(
-			'/api/login/',
-			{'email': 'student4@example.com', 'password': 'strongpass123'},
-			format='json',
-		)
-
-		self.assertEqual(response.status_code, status.HTTP_200_OK)
-		self.assertIn('access', response.data)
-		self.assertIn('refresh', response.data)
+		self.assertEqual(response.data['email'], 'student4b@example.com')
 
 	def test_password_change_and_reset(self):
 		user = User.objects.create_user(
@@ -74,14 +35,14 @@ class ApiEndpointTests(APITestCase):
 			password='strongpass123',
 		)
 
-		login = self.client.post('/api/login/', {'username': 'student5@example.com', 'password': 'strongpass123'}, format='json')
-		token = login.data['access']
-
 		change = self.client.post(
 			'/api/password/change/',
-			{'current_password': 'strongpass123', 'new_password': 'newstrongpass123'},
+			{
+				'email': 'student5@example.com',
+				'current_password': 'strongpass123',
+				'new_password': 'newstrongpass123',
+			},
 			format='json',
-			HTTP_AUTHORIZATION=f'Bearer {token}',
 		)
 		self.assertEqual(change.status_code, status.HTTP_200_OK)
 
@@ -98,21 +59,15 @@ class ApiEndpointTests(APITestCase):
 			email='student6@example.com',
 			password='strongpass123',
 		)
-		login = self.client.post('/api/login/', {'username': 'student6@example.com', 'password': 'strongpass123'}, format='json')
-		token = login.data['access']
 
 		booking_response = self.client.post(
 			'/api/bookings/',
 			{
 				'vehicleId': 1,
-				'vehicleName': 'Toyota Vios',
-				'ownerName': 'Owner',
-				'renterName': 'Student 6',
-				'renterEmail': 'student6@example.com',
+				'renterId': user.id,
 				'status': 'pending',
 			},
 			format='json',
-			HTTP_AUTHORIZATION=f'Bearer {token}',
 		)
 		self.assertEqual(booking_response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(Booking.objects.count(), 1)
@@ -122,7 +77,6 @@ class ApiEndpointTests(APITestCase):
 			f'/api/bookings/{booking_id}/',
 			{'status': 'approved'},
 			format='json',
-			HTTP_AUTHORIZATION=f'Bearer {token}',
 		)
 		self.assertEqual(booking_patch.status_code, status.HTTP_200_OK)
 
@@ -131,13 +85,11 @@ class ApiEndpointTests(APITestCase):
 			{
 				'type': 'checkin',
 				'vehicleId': 1,
-				'vehicleName': 'Toyota Vios',
-				'renterName': 'Student 6',
+				'reporterId': user.id,
 				'issues': [],
 				'notes': 'ok',
 			},
 			format='json',
-			HTTP_AUTHORIZATION=f'Bearer {token}',
 		)
 		self.assertEqual(report_response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(LogReport.objects.count(), 1)
@@ -151,7 +103,80 @@ class ApiEndpointTests(APITestCase):
 				'type': 'notification',
 			},
 			format='json',
-			HTTP_AUTHORIZATION=f'Bearer {token}',
 		)
 		self.assertEqual(email_response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(EmailLog.objects.count(), 1)
+
+	def test_booking_invalid_renter_id_returns_400(self):
+		response = self.client.post(
+			'/api/bookings/',
+			{
+				'brand': 'Toyota',
+				'model': 'Vios',
+				'renterId': '123t1231',
+				'year': 2022,
+				'daily_rate': '1500.00',
+				'available': True,
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+		self.assertIn('renterId', response.data)
+
+	def test_filter_bookings_by_status(self):
+		user = User.objects.create_user(
+			username='student7',
+			email='student7@example.com',
+			password='strongpass123',
+		)
+		Booking.objects.create(renter=user, owner=None, vehicle=None, status='pending')
+		Booking.objects.create(renter=user, owner=None, vehicle=None, status='approved')
+
+		response = self.client.get('/api/bookings/?status=approved')
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response.data), 1)
+		self.assertEqual(response.data[0]['status'], 'approved')
+
+	def test_filter_cars_by_rented_reserved_and_available(self):
+		owner = User.objects.create_user(
+			username='owner1',
+			email='owner1@example.com',
+			password='strongpass123',
+		)
+		Car.objects.create(owner=owner, brand='Toyota', model='Vios', year=2022, daily_rate='1200.00', available=False)
+		Car.objects.create(owner=owner, brand='Honda', model='Civic', year=2023, daily_rate='1300.00', available=True)
+
+		response_rented = self.client.get('/api/cars/?status=rented')
+		self.assertEqual(response_rented.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response_rented.data), 1)
+		self.assertFalse(response_rented.data[0]['available'])
+
+		response_reserved = self.client.get('/api/cars/?status=reserved')
+		self.assertEqual(response_reserved.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response_reserved.data), 1)
+		self.assertFalse(response_reserved.data[0]['available'])
+
+		response_available = self.client.get('/api/cars/?status=available')
+		self.assertEqual(response_available.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response_available.data), 1)
+		self.assertTrue(response_available.data[0]['available'])
+
+	def test_car_creation_is_fetchable(self):
+		create_response = self.client.post(
+			'/api/cars/',
+			{
+				'brand': 'Nissan',
+				'model': 'Sentra',
+				'year': 2024,
+				'daily_rate': '1400.00',
+				'available': True,
+			},
+			format='json',
+		)
+		self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+		car_id = create_response.data['id']
+
+		list_response = self.client.get('/api/cars/')
+		self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+		self.assertTrue(any(car['id'] == car_id for car in list_response.data))

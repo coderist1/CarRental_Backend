@@ -11,6 +11,64 @@
 			],
 			"isBackground": true,
 			"group": "build"
+		},
+		{
+			"label": "inspect-pdf-lab9",
+			"type": "shell",
+			"command": "C:/Users/Acer/AppData/Local/Python/bin/python.exe",
+			"args": [
+				"-c",
+				"from pathlib import Path; from PyPDF2 import PdfReader; p=Path(r'C:\\Users\\Acer\\backend\\Lab9-Integrating-Web-and-Mobile-UI-with-Django-REST-API-and-Data-Flow.pdf'); r=PdfReader(str(p)); print('PAGES', len(r.pages));\nfor i, pg in enumerate(r.pages[:5]):\n    txt=(pg.extract_text() or '').strip(); print(f'\\n--- PAGE {i+1} ---\\n{txt[:5000]}')"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "inspect-pdf-lab9",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"& 'C:/Users/Acer/AppData/Local/Python/bin/python.exe' -c \"from pathlib import Path; from PyPDF2 import PdfReader; p=Path(r'C:\\Users\\Acer\\backend\\Lab9-Integrating-Web-and-Mobile-UI-with-Django-REST-API-and-Data-Flow.pdf'); r=PdfReader(str(p)); print('PAGES', len(r.pages)); [print(f'\\\\n--- PAGE {i+1} ---\\\\n'+((pg.extract_text() or '').strip()[:5000])) for i,pg in enumerate(r.pages[:5])]\""
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "inspect-pdf-lab9-run",
+			"type": "shell",
+			"command": "C:/Users/Acer/AppData/Local/Python/bin/python.exe",
+			"args": [
+				"_inspect_lab9.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "inspect-pdf-lab9-run-2",
+			"type": "shell",
+			"command": "C:/Users/Acer/AppData/Local/Python/bin/python.exe",
+			"args": [
+				"c:/Users/Acer/backend/_inspect_lab9.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "inspect-pdf-lab9-run-3",
+			"type": "shell",
+			"command": "C:/Users/Acer/AppData/Local/Python/bin/python.exe",
+			"args": [
+				"c:/Users/Acer/backend/_inspect_lab9.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

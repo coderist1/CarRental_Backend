@@ -19,25 +19,40 @@ For web/mobile clients on the same LAN, use:
 
 - `GET /api/health/` - health check
 - `POST /api/register/` - register user (supports profile fields and role)
-- `POST /api/login/` - login and get JWT `access`/`refresh`
+- `POST /api/login/` - login using session authentication
 - `POST /api/password/change/` - change authenticated user password
 - `POST /api/password/reset/` - request password reset
-- `GET /api/me/` - authenticated user profile
-- `PATCH /api/me/` - update authenticated user profile
+- `GET /api/me/` - user profile (pass `userId`, `email`, or `username`)
+- `PATCH /api/me/` - update user profile (pass `userId`, `email`, or `username`)
 - `GET /api/cars/` - list cars
-- `POST /api/cars/` - create a car (authenticated)
+- `POST /api/cars/` - create a car
 - `GET /api/cars/<id>/` - retrieve car
-- `PATCH /api/cars/<id>/` - update car (authenticated)
-- `DELETE /api/cars/<id>/` - delete car (authenticated)
-- `GET /api/bookings/` - list bookings (authenticated)
-- `POST /api/bookings/` - create a booking (authenticated)
-- `GET /api/log-reports/` - list log reports (authenticated)
-- `POST /api/log-reports/` - create a log report (authenticated)
-- `GET /api/email-logs/` - list email logs (authenticated)
-- `POST /api/email-logs/` - create an email log (authenticated)
-- `GET /api/users/` - list users (admin)
-- `PATCH /api/users/<id>/` - update user (admin)
-- `DELETE /api/users/<id>/` - delete user (admin)
+- `PUT /api/cars/<id>/` - replace car
+- `PATCH /api/cars/<id>/` - update car
+- `DELETE /api/cars/<id>/` - delete car
+- `GET /api/bookings/` - list bookings
+- `POST /api/bookings/` - create a booking (`renterId` required)
+- `GET /api/bookings/<id>/` - retrieve booking
+- `PUT /api/bookings/<id>/` - replace booking
+- `PATCH /api/bookings/<id>/` - update booking
+- `DELETE /api/bookings/<id>/` - delete booking
+- `GET /api/log-reports/` - list log reports
+- `POST /api/log-reports/` - create a log report (`reporterId` required)
+- `GET /api/log-reports/<id>/` - retrieve log report
+- `PUT /api/log-reports/<id>/` - replace log report
+- `PATCH /api/log-reports/<id>/` - update log report
+- `DELETE /api/log-reports/<id>/` - delete log report
+- `GET /api/email-logs/` - list email logs
+- `POST /api/email-logs/` - create an email log
+- `GET /api/email-logs/<id>/` - retrieve email log
+- `PUT /api/email-logs/<id>/` - replace email log
+- `PATCH /api/email-logs/<id>/` - update email log
+- `DELETE /api/email-logs/<id>/` - delete email log
+- `GET /api/users/` - list users
+- `GET /api/users/<id>/` - retrieve user
+- `PUT /api/users/<id>/` - replace user
+- `PATCH /api/users/<id>/` - update user
+- `DELETE /api/users/<id>/` - delete user
 
 ## HTTPie test examples
 
@@ -50,11 +65,11 @@ http POST :8000/api/login/ username=student1@example.com password=strongpass123
 
 Expected:
 - Register: `201 Created`
-- Login: `200 OK` with JSON tokens
+- Login: `200 OK` with user profile JSON and a session cookie
 
-## CORS
+## CORS and Auth
 
-`django-cors-headers` is enabled and currently allows all origins for development.
+This project uses session-based authentication. For cross-origin requests (e.g., from a mobile app or a separate web frontend), `django-cors-headers` is configured to allow credentials (cookies) from specific origins defined in `settings.py`.
 
 ## Admin
 
