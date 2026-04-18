@@ -7,8 +7,6 @@ from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from PIL import Image
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
 from .models import Booking, Car, EmailLog, LogReport, UserProfile
 
 
@@ -506,32 +504,3 @@ class EmailLogSerializer(serializers.Serializer):
         return instance
 
 
-class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # Keep the existing request shape while allowing explicit email too.
-    username = serializers.CharField(required=False, write_only=True)
-    email = serializers.EmailField(required=False, write_only=True)
-
-    def to_internal_value(self, data):
-        if isinstance(data, dict) and not data.get('username') and data.get('email'):
-            data = data.copy()
-            data['username'] = data.get('email')
-        return super().to_internal_value(data)
-
-    def validate(self, attrs):
-        login_value = (attrs.get('username') or attrs.get('email') or '').strip().lower()
-        password = attrs.get('password')
-
-        if not login_value or not password:
-            raise serializers.ValidationError({'detail': 'Both username/email and password are required.'})
-
-        username_value = login_value
-        if '@' in login_value:
-            user = User.objects.filter(email__iexact=login_value).first()
-            if user:
-                username_value = user.username
-
-        token_attrs = {
-            self.username_field: username_value,
-            'password': password,
-        }
-        return super().validate(token_attrs)

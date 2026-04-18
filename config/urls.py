@@ -28,8 +28,6 @@ def root_view(request):
             '/api/health/',
             '/api/register/',
             '/api/login/',
-            '/api/login/refresh/',
-            '/api/login/verify/',
             '/api/password/change/',
             '/api/password/reset/',
             '/api/me/',

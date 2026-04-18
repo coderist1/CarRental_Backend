@@ -1,3 +1,5 @@
+import logging
+from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
@@ -5,12 +7,10 @@ from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 
 from .models import Booking, Car, EmailLog, LogReport
 from .serializers import (
 	CarSerializer,
-	EmailOrUsernameTokenObtainPairSerializer,
 	BookingSerializer,
 	EmailLogSerializer,
 	LogReportSerializer,
@@ -22,9 +22,33 @@ from .serializers import (
 )
 
 
-class IsAdminUserRole(permissions.BasePermission):
-	def has_permission(self, request, view):
-		return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+class LoginView(APIView):
+	permission_classes = [permissions.AllowAny]
+	authentication_classes = []  # Bypass default auth to avoid CSRF check on login
+
+	def post(self, request):
+		email = request.data.get('email', '').strip().lower()
+		username = request.data.get('username', '').strip()
+		password = request.data.get('password', '')
+
+		if not password or (not email and not username):
+			return Response(
+				{'detail': 'Provide email or username along with password.'},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
+
+		user = None
+		if email:
+			user_obj = User.objects.filter(email__iexact=email).first()
+			if user_obj:
+				user = authenticate(request, username=user_obj.username, password=password)
+		else:
+			user = authenticate(request, username=username, password=password)
+
+		if user is not None:
+			login(request, user)
+			return Response(UserSerializer(user).data)
+		return Response({'detail': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -46,18 +70,6 @@ class RegisterView(generics.CreateAPIView):
 		)
 
 
-class LoginView(TokenObtainPairView):
-	serializer_class = EmailOrUsernameTokenObtainPairSerializer
-
-
-class LoginRefreshView(TokenRefreshView):
-	permission_classes = [permissions.AllowAny]
-
-
-class LoginVerifyView(TokenVerifyView):
-	permission_classes = [permissions.AllowAny]
-
-
 class PasswordChangeView(APIView):
 	permission_classes = [permissions.AllowAny]
 
@@ -69,17 +81,16 @@ class PasswordChangeView(APIView):
 		email = serializer.validated_data.get('email', '').strip().lower()
 		username = serializer.validated_data.get('username', '').strip()
 
-		user = request.user if request.user.is_authenticated else None
-		if not user:
-			if email:
-				user = User.objects.filter(email__iexact=email).first()
-			elif username:
-				user = User.objects.filter(username=username).first()
-			else:
-				return Response(
-					{'detail': 'Provide email or username when no token is used.'},
-					status=status.HTTP_400_BAD_REQUEST,
-				)
+		user = None
+		if email:
+			user = User.objects.filter(email__iexact=email).first()
+		elif username:
+			user = User.objects.filter(username=username).first()
+		else:
+			return Response(
+				{'detail': 'Provide email or username.'},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
 
 		if not user:
 			return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -113,9 +124,6 @@ class MeView(APIView):
 	permission_classes = [permissions.AllowAny]
 
 	def _resolve_target_user(self, request):
-		if request.user and request.user.is_authenticated:
-			return request.user
-
 		user_id = request.query_params.get('userId') or request.data.get('userId') or request.data.get('id')
 		email = (request.query_params.get('email') or request.data.get('email') or '').strip().lower()
 		username = (request.query_params.get('username') or request.data.get('username') or '').strip()
@@ -132,7 +140,7 @@ class MeView(APIView):
 		user = self._resolve_target_user(request)
 		if not user:
 			return Response(
-				{'detail': 'Provide userId, email, or username when no token is used.'},
+				{'detail': 'Provide userId, email, or username.'},
 				status=status.HTTP_400_BAD_REQUEST,
 			)
 		return Response(UserSerializer(user).data)
@@ -141,7 +149,7 @@ class MeView(APIView):
 		user = self._resolve_target_user(request)
 		if not user:
 			return Response(
-				{'detail': 'Provide userId, email, or username when no token is used.'},
+				{'detail': 'Provide userId, email, or username.'},
 				status=status.HTTP_400_BAD_REQUEST,
 			)
 		serializer = UserUpdateSerializer(instance=user, data=request.data, partial=True)
@@ -155,11 +163,12 @@ class BookingListCreateView(generics.ListCreateAPIView):
 	serializer_class = BookingSerializer
 	permission_classes = [permissions.AllowAny]
 
-	def perform_create(self, serializer):
-		if self.request.user and self.request.user.is_authenticated:
-			serializer.save(renter=self.request.user)
-			return
-		serializer.save()
+	def get_queryset(self):
+		queryset = Booking.objects.select_related('renter', 'owner', 'vehicle').all()
+		status_param = self.request.query_params.get('status')
+		if status_param:
+			return queryset.filter(status__iexact=status_param.strip())
+		return queryset
 
 
 class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -172,12 +181,6 @@ class LogReportListCreateView(generics.ListCreateAPIView):
 	queryset = LogReport.objects.select_related('reporter', 'vehicle').all()
 	serializer_class = LogReportSerializer
 	permission_classes = [permissions.AllowAny]
-
-	def perform_create(self, serializer):
-		if self.request.user and self.request.user.is_authenticated:
-			serializer.save(reporter=self.request.user)
-			return
-		serializer.save()
 
 
 class LogReportDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -218,18 +221,78 @@ class CarListCreateView(generics.ListCreateAPIView):
 	queryset = Car.objects.all()
 	serializer_class = CarSerializer
 	permission_classes = [permissions.AllowAny]
-	authentication_classes = []
 	parser_classes = [MultiPartParser, FormParser, JSONParser]
 
 	def get_queryset(self):
-		return Car.objects.select_related('owner').all()
+		queryset = Car.objects.select_related('owner').all()
+		status_param = self.request.query_params.get('status')
+		owner_id = self.request.query_params.get('ownerId')
+		if status_param:
+			status_value = status_param.strip().lower()
+			if status_value in ['rented', 'reserved']:
+				queryset = queryset.filter(available=False)
+			elif status_value == 'available':
+				queryset = queryset.filter(available=True)
+		if owner_id:
+			try:
+				queryset = queryset.filter(owner_id=int(owner_id))
+			except (TypeError, ValueError):
+				pass
+		return queryset
+
+	def perform_create(self, serializer):
+		logger = logging.getLogger(__name__)
+		user = getattr(self.request, 'user', None)
+		auth = getattr(self.request, 'auth', None)
+		try:
+			data = dict(self.request.data)
+		except Exception:
+			data = str(self.request.data)
+		logger.warning('Car create attempt: user=%s authenticated=%s auth=%s data=%s',
+					   user, bool(user and getattr(user, 'is_authenticated', False)), auth, data)
+
+		if self.request.user and self.request.user.is_authenticated:
+			serializer.save(owner=self.request.user)
+			return
+
+		owner_candidate = None
+		try:
+			owner_candidate = (
+				self.request.data.get('owner')
+				or self.request.data.get('ownerId')
+				or self.request.data.get('owner_id')
+				or self.request.data.get('user')
+				or self.request.data.get('user_id')
+				or self.request.data.get('ownerEmail')
+				or self.request.data.get('owner_email')
+			)
+		except Exception:
+			owner_candidate = None
+
+		owner_obj = None
+		if owner_candidate:
+			try:
+				cand = str(owner_candidate).strip()
+				if cand.isdigit():
+					owner_obj = User.objects.filter(pk=int(cand)).first()
+				elif '@' in cand:
+					owner_obj = User.objects.filter(email__iexact=cand).first()
+				else:
+					owner_obj = User.objects.filter(username__iexact=cand).first()
+			except Exception:
+				owner_obj = None
+
+		if owner_obj:
+			serializer.save(owner=owner_obj)
+			return
+
+		serializer.save()
 
 
 class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = Car.objects.all()
 	serializer_class = CarSerializer
 	permission_classes = [permissions.AllowAny]
-	authentication_classes = []
 	parser_classes = [MultiPartParser, FormParser, JSONParser]
 
 	def get_queryset(self):

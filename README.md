@@ -19,13 +19,11 @@ For web/mobile clients on the same LAN, use:
 
 - `GET /api/health/` - health check
 - `POST /api/register/` - register user (supports profile fields and role)
-- `POST /api/login/` - login and get JWT `access`/`refresh`
-- `POST /api/login/refresh/` - get a new access token from refresh token
-- `POST /api/login/verify/` - verify a JWT token
+- `POST /api/login/` - login using session authentication
 - `POST /api/password/change/` - change authenticated user password
 - `POST /api/password/reset/` - request password reset
-- `GET /api/me/` - user profile (use token or pass `userId`, `email`, or `username`)
-- `PATCH /api/me/` - update user profile (use token or pass `userId`, `email`, or `username`)
+- `GET /api/me/` - user profile (pass `userId`, `email`, or `username`)
+- `PATCH /api/me/` - update user profile (pass `userId`, `email`, or `username`)
 - `GET /api/cars/` - list cars
 - `POST /api/cars/` - create a car
 - `GET /api/cars/<id>/` - retrieve car
@@ -33,13 +31,13 @@ For web/mobile clients on the same LAN, use:
 - `PATCH /api/cars/<id>/` - update car
 - `DELETE /api/cars/<id>/` - delete car
 - `GET /api/bookings/` - list bookings
-- `POST /api/bookings/` - create a booking (`renterId` required if no token)
+- `POST /api/bookings/` - create a booking (`renterId` required)
 - `GET /api/bookings/<id>/` - retrieve booking
 - `PUT /api/bookings/<id>/` - replace booking
 - `PATCH /api/bookings/<id>/` - update booking
 - `DELETE /api/bookings/<id>/` - delete booking
 - `GET /api/log-reports/` - list log reports
-- `POST /api/log-reports/` - create a log report (`reporterId`/`renterId` required if no token)
+- `POST /api/log-reports/` - create a log report (`reporterId` required)
 - `GET /api/log-reports/<id>/` - retrieve log report
 - `PUT /api/log-reports/<id>/` - replace log report
 - `PATCH /api/log-reports/<id>/` - update log report
@@ -63,19 +61,15 @@ For web/mobile clients on the same LAN, use:
 ```bash
 http POST :8000/api/register/ username=student1 email=student1@example.com password=strongpass123 role=renter
 http POST :8000/api/login/ username=student1@example.com password=strongpass123
-http POST :8000/api/login/refresh/ refresh="PASTE_REFRESH_TOKEN"
-http GET :8000/api/me/ "Authorization: Bearer PASTE_ACCESS_TOKEN"
-http GET :8000/api/me/ "Authorization: Token PASTE_ACCESS_TOKEN"
 ```
 
 Expected:
 - Register: `201 Created`
-- Login: `200 OK` with JSON tokens
+- Login: `200 OK` with user profile JSON and a session cookie
 
 ## CORS and Auth
 
-`django-cors-headers` is enabled and currently allows all origins for development.
-JWT auth accepts both `Bearer` and `Token` authorization headers so the backend works with the lab examples and standard DRF/JWT clients.
+This project uses session-based authentication. For cross-origin requests (e.g., from a mobile app or a separate web frontend), `django-cors-headers` is configured to allow credentials (cookies) from specific origins defined in `settings.py`.
 
 ## Admin
 
