@@ -1,8 +1,42 @@
+import base64
+import binascii
+import io
+import uuid
+
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
+from PIL import Image
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import Booking, Car, EmailLog, LogReport, UserProfile
+
+
+class Base64ImageField(serializers.ImageField):
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            if data.startswith('data:') and ';base64,' in data:
+                data = data.split(';base64,')[1]
+            try:
+                decoded_file = base64.b64decode(data)
+            except (TypeError, binascii.Error):
+                self.fail('invalid_image')
+
+            file_name = str(uuid.uuid4())[:12]
+            file_extension = self.get_file_extension(file_name, decoded_file)
+            data = ContentFile(decoded_file, name=f"{file_name}.{file_extension}")
+
+        return super().to_internal_value(data)
+
+    def get_file_extension(self, file_name, decoded_file):
+        try:
+            image = Image.open(io.BytesIO(decoded_file))
+            extension = image.format.lower()
+        except Exception:
+            extension = None
+        if extension == 'jpeg':
+            extension = 'jpg'
+        return extension or 'png'
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -151,7 +185,10 @@ class CarSerializer(serializers.ModelSerializer):
     owner = serializers.SerializerMethodField()
     name = serializers.CharField(source='model', required=False)
     pricePerDay = serializers.DecimalField(source='daily_rate', max_digits=8, decimal_places=2, required=False)
+    image = Base64ImageField(required=False, allow_null=True, use_url=True)
+    imageUrl = serializers.SerializerMethodField(read_only=True)
     status = serializers.SerializerMethodField()
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
 
     class Meta:
         model = Car
@@ -166,9 +203,12 @@ class CarSerializer(serializers.ModelSerializer):
             'year',
             'daily_rate',
             'pricePerDay',
+            'image',
+            'imageUrl',
             'available',
             'status',
             'created_at',
+            'updatedAt',
         )
 
     def get_owner(self, obj):
@@ -176,6 +216,21 @@ class CarSerializer(serializers.ModelSerializer):
             return ''
         full_name = f"{obj.owner.first_name} {obj.owner.last_name}".strip()
         return full_name or obj.owner.username
+
+    def get_imageUrl(self, obj):
+        if not obj.image:
+            return ''
+        request = self.context.get('request')
+        if request is not None:
+            return request.build_absolute_uri(obj.image.url)
+        return obj.image.url
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        image_url = self.get_imageUrl(instance)
+        data['image'] = image_url
+        data['imageUrl'] = image_url
+        return data
 
     def get_status(self, obj):
         return 'available' if obj.available else 'rented'

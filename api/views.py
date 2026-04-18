@@ -2,6 +2,7 @@ from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework import status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView
@@ -217,6 +218,8 @@ class CarListCreateView(generics.ListCreateAPIView):
 	queryset = Car.objects.all()
 	serializer_class = CarSerializer
 	permission_classes = [permissions.AllowAny]
+	authentication_classes = []
+	parser_classes = [MultiPartParser, FormParser, JSONParser]
 
 	def get_queryset(self):
 		return Car.objects.select_related('owner').all()
@@ -226,6 +229,8 @@ class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = Car.objects.all()
 	serializer_class = CarSerializer
 	permission_classes = [permissions.AllowAny]
+	authentication_classes = []
+	parser_classes = [MultiPartParser, FormParser, JSONParser]
 
 	def get_queryset(self):
 		return Car.objects.select_related('owner').all()
