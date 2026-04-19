@@ -330,6 +330,7 @@ class BookingSerializer(serializers.Serializer):
     def to_representation(self, instance):
         data = instance.data or {}
         return {
+            **data,
             'id': instance.id,
             'renterId': instance.renter_id,
             'ownerId': instance.owner_id,
@@ -338,7 +339,6 @@ class BookingSerializer(serializers.Serializer):
             'rentalId': instance.rental_id,
             'createdAt': instance.created_at,
             'updatedAt': instance.updated_at,
-            **data,
         }
 
     def create(self, validated_data):
@@ -592,4 +592,3 @@ class EmailLogSerializer(serializers.Serializer):
         instance.data = data
         instance.save()
         return instance
-    
