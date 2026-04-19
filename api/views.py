@@ -170,6 +170,14 @@ class BookingListCreateView(generics.ListCreateAPIView):
 			return queryset.filter(status__iexact=status_param.strip())
 		return queryset
 
+	def perform_create(self, serializer):
+		# If the request is authenticated, use the requesting user as the renter.
+		# This avoids a 400 when the client omits renterId but the user is logged in.
+		if getattr(self.request, 'user', None) and getattr(self.request.user, 'is_authenticated', False):
+			serializer.save(renter=self.request.user)
+			return
+		serializer.save()
+
 
 class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = Booking.objects.select_related('renter', 'owner', 'vehicle').all()
@@ -181,6 +189,13 @@ class LogReportListCreateView(generics.ListCreateAPIView):
 	queryset = LogReport.objects.select_related('reporter', 'vehicle').all()
 	serializer_class = LogReportSerializer
 	permission_classes = [permissions.AllowAny]
+
+	def perform_create(self, serializer):
+		# If authenticated, use the requesting user as the reporter.
+		if getattr(self.request, 'user', None) and getattr(self.request.user, 'is_authenticated', False):
+			serializer.save(reporter=self.request.user)
+			return
+		serializer.save()
 
 
 class LogReportDetailView(generics.RetrieveUpdateDestroyAPIView):

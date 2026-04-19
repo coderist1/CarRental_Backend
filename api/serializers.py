@@ -295,16 +295,33 @@ class BookingSerializer(serializers.Serializer):
             return None
         if isinstance(raw_value, User):
             return raw_value
-        try:
-            return User.objects.filter(pk=int(raw_value)).first()
-        except (TypeError, ValueError):
-            raise serializers.ValidationError({field_name: 'Must be a valid numeric user id.'})
+
+        if isinstance(raw_value, (list, tuple)):
+            raw_value = raw_value[0] if raw_value else None
+            if raw_value is None:
+                return None
+
+        text = str(raw_value).strip()
+        if not text:
+            return None
+
+        if text.isdigit():
+            return User.objects.filter(pk=int(text)).first()
+        if '@' in text:
+            return User.objects.filter(email__iexact=text).first()
+        return User.objects.filter(username__iexact=text).first()
 
     def _resolve_car(self, raw_value, field_name):
         if raw_value is None:
             return None
         if isinstance(raw_value, Car):
             return raw_value
+
+        if isinstance(raw_value, (list, tuple)):
+            raw_value = raw_value[0] if raw_value else None
+            if raw_value is None:
+                return None
+
         try:
             return Car.objects.filter(pk=int(raw_value)).first()
         except (TypeError, ValueError):
@@ -327,17 +344,30 @@ class BookingSerializer(serializers.Serializer):
     def create(self, validated_data):
         data = dict(validated_data)
         status_value = data.pop('status', 'pending')
-        renter_id = data.pop('renter', None) or data.pop('renterId', None)
-        owner_id = data.pop('owner', None) or data.pop('ownerId', None)
-        vehicle_id = data.pop('vehicle', None) or data.pop('vehicleId', None)
-        rental_id = data.pop('rental_id', '')
+        renter_id = data.pop('renterId', None) or data.pop('renter', None)
+        owner_id = data.pop('ownerId', None) or data.pop('owner', None)
+        vehicle_id = data.pop('vehicleId', None) or data.pop('vehicle', None)
+        rental_id = data.pop('rental_id', '') or data.pop('rentalId', '')
+
         renter = None
+        request = getattr(self, 'context', {}).get('request')
         if renter_id is not None:
             renter = self._resolve_user(renter_id, 'renterId')
             if renter is None:
-                raise serializers.ValidationError({'renterId': f'User with id {renter_id} not found.'})
+                raise serializers.ValidationError({'renterId': f'User not found for value {renter_id}.'})
         else:
-            raise serializers.ValidationError({'renterId': 'renterId (or renter) is required.'})
+            if request is not None and getattr(request, 'user', None) and getattr(request.user, 'is_authenticated', False):
+                renter = request.user
+            else:
+                # No authenticated user and no renterId provided — attempt to auto-create or reuse a guest user
+                guest_email = data.pop('renterEmail', None) or data.pop('email', None) or None
+                if guest_email:
+                    renter, _ = User.objects.get_or_create(email=guest_email, defaults={
+                        'username': guest_email.split('@')[0][:150] or f'guest_{uuid.uuid4().hex[:8]}',
+                    })
+                else:
+                    username = f'guest_{uuid.uuid4().hex[:8]}'
+                    renter = User.objects.create_user(username=username, email='')
 
         owner = self._resolve_user(owner_id, 'ownerId')
         vehicle = self._resolve_car(vehicle_id, 'vehicleId')
@@ -355,9 +385,9 @@ class BookingSerializer(serializers.Serializer):
         incoming = dict(validated_data)
         if 'status' in incoming:
             instance.status = incoming.pop('status')
-        renter_id = incoming.pop('renter', None) or incoming.pop('renterId', None)
-        owner_id = incoming.pop('owner', None) or incoming.pop('ownerId', None)
-        vehicle_id = incoming.pop('vehicle', None) or incoming.pop('vehicleId', None)
+        renter_id = incoming.pop('renterId', None) or incoming.pop('renter', None)
+        owner_id = incoming.pop('ownerId', None) or incoming.pop('owner', None)
+        vehicle_id = incoming.pop('vehicleId', None) or incoming.pop('vehicle', None)
         if renter_id is not None:
             resolved_renter = self._resolve_user(renter_id, 'renterId')
             if resolved_renter is not None:
@@ -394,16 +424,33 @@ class LogReportSerializer(serializers.Serializer):
             return None
         if isinstance(raw_value, User):
             return raw_value
-        try:
-            return User.objects.filter(pk=int(raw_value)).first()
-        except (TypeError, ValueError):
-            raise serializers.ValidationError({field_name: 'Must be a valid numeric user id.'})
+
+        if isinstance(raw_value, (list, tuple)):
+            raw_value = raw_value[0] if raw_value else None
+            if raw_value is None:
+                return None
+
+        text = str(raw_value).strip()
+        if not text:
+            return None
+
+        if text.isdigit():
+            return User.objects.filter(pk=int(text)).first()
+        if '@' in text:
+            return User.objects.filter(email__iexact=text).first()
+        return User.objects.filter(username__iexact=text).first()
 
     def _resolve_car(self, raw_value, field_name):
         if raw_value is None:
             return None
         if isinstance(raw_value, Car):
             return raw_value
+
+        if isinstance(raw_value, (list, tuple)):
+            raw_value = raw_value[0] if raw_value else None
+            if raw_value is None:
+                return None
+
         try:
             return Car.objects.filter(pk=int(raw_value)).first()
         except (TypeError, ValueError):
@@ -427,18 +474,29 @@ class LogReportSerializer(serializers.Serializer):
     def create(self, validated_data):
         data = dict(validated_data)
         report_type = data.pop('type', 'checkin')
-        reporter_id = data.pop('reporter', None) or data.pop('renterId', None) or data.pop('reporterId', None)
-        vehicle_id = data.pop('vehicle', None) or data.pop('vehicleId', None)
-        rental_id = data.pop('rental_id', '')
+        reporter_id = data.pop('reporterId', None) or data.pop('renterId', None) or data.pop('reporter', None)
+        vehicle_id = data.pop('vehicleId', None) or data.pop('vehicle', None)
+        rental_id = data.pop('rental_id', '') or data.pop('rentalId', '')
         checkout = data.pop('checkout', None)
         comments = data.pop('comments', [])
         reporter = None
+        request = getattr(self, 'context', {}).get('request')
         if reporter_id is not None:
             reporter = self._resolve_user(reporter_id, 'reporterId')
             if reporter is None:
-                raise serializers.ValidationError({'reporterId': f'User with id {reporter_id} not found.'})
+                raise serializers.ValidationError({'reporterId': f'User not found for value {reporter_id}.'})
         else:
-            raise serializers.ValidationError({'reporterId': 'reporterId (or renterId/reporter) is required.'})
+            if request is not None and getattr(request, 'user', None) and getattr(request.user, 'is_authenticated', False):
+                reporter = request.user
+            else:
+                guest_email = data.pop('reporterEmail', None) or data.pop('email', None) or None
+                if guest_email:
+                    reporter, _ = User.objects.get_or_create(email=guest_email, defaults={
+                        'username': guest_email.split('@')[0][:150] or f'guest_{uuid.uuid4().hex[:8]}',
+                    })
+                else:
+                    username = f'guest_{uuid.uuid4().hex[:8]}'
+                    reporter = User.objects.create_user(username=username, email='')
 
         vehicle = self._resolve_car(vehicle_id, 'vehicleId')
         return LogReport.objects.create(
@@ -456,8 +514,8 @@ class LogReportSerializer(serializers.Serializer):
         incoming = dict(validated_data)
         if 'type' in incoming:
             instance.report_type = incoming.pop('type')
-        reporter_id = incoming.pop('reporter', None) or incoming.pop('renterId', None) or incoming.pop('reporterId', None)
-        vehicle_id = incoming.pop('vehicle', None) or incoming.pop('vehicleId', None)
+        reporter_id = incoming.pop('reporterId', None) or incoming.pop('renterId', None) or incoming.pop('reporter', None)
+        vehicle_id = incoming.pop('vehicleId', None) or incoming.pop('vehicle', None)
         if reporter_id is not None:
             resolved_reporter = self._resolve_user(reporter_id, 'reporterId')
             if resolved_reporter is not None:
@@ -468,6 +526,8 @@ class LogReportSerializer(serializers.Serializer):
                 instance.vehicle = resolved_vehicle
         if 'rental_id' in incoming:
             instance.rental_id = incoming.pop('rental_id')
+        if 'rentalId' in incoming:
+            instance.rental_id = incoming.pop('rentalId')
         if 'checkout' in incoming:
             instance.checkout = incoming.pop('checkout')
         if 'comments' in incoming:
