@@ -1,3 +1,4 @@
+
 """
 Django settings for config project.
 
@@ -137,9 +138,27 @@ REST_FRAMEWORK = {
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:5173",
     "http://localhost:8080",
     "http://localhost:8081",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
     "http://127.0.0.1:8080",
     "http://127.0.0.1:8081",
 ]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+]
+
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False  # Must be readable by JS to send in headers

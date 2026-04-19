@@ -13,8 +13,20 @@ from .models import Booking, Car, EmailLog, LogReport, UserProfile
 class Base64ImageField(serializers.ImageField):
     def to_internal_value(self, data):
         if isinstance(data, str):
+            # Empty/whitespace string = no image provided
+            if not data.strip():
+                if self.required:
+                    self.fail('required')
+                return None
+
+            # Already a URL (existing image echoed back from frontend) — keep existing, don't re-upload
+            if data.startswith('http://') or data.startswith('https://') or data.startswith('/media/'):
+                raise serializers.SkipField()
+
+            # Strip base64 data URI prefix if present
             if data.startswith('data:') and ';base64,' in data:
                 data = data.split(';base64,')[1]
+
             try:
                 decoded_file = base64.b64decode(data)
             except (TypeError, binascii.Error):
@@ -181,12 +193,24 @@ class CarSerializer(serializers.ModelSerializer):
     ownerId = serializers.IntegerField(source='owner.id', read_only=True)
     ownerEmail = serializers.EmailField(source='owner.email', read_only=True)
     owner = serializers.SerializerMethodField()
+    brand = serializers.CharField(required=False)
+    model = serializers.CharField(required=False)
+    year = serializers.IntegerField(required=False)
+    daily_rate = serializers.DecimalField(max_digits=8, decimal_places=2, required=False)
     name = serializers.CharField(source='model', required=False)
     pricePerDay = serializers.DecimalField(source='daily_rate', max_digits=8, decimal_places=2, required=False)
-    image = Base64ImageField(required=False, allow_null=True, use_url=True)
+    # FIXED: Use Base64ImageField instead of plain ImageField
+    # This handles the case where frontend sends back an existing image URL string during PATCH
+    image = Base64ImageField(required=False, allow_null=True)
     imageUrl = serializers.SerializerMethodField(read_only=True)
     status = serializers.SerializerMethodField()
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+    type = serializers.CharField(source='vehicle_type', required=False, allow_blank=True)
+    transmission = serializers.CharField(required=False, allow_blank=True)
+    fuel = serializers.CharField(required=False, allow_blank=True)
+    seats = serializers.IntegerField(required=False, allow_null=True)
+    location = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Car
@@ -205,6 +229,12 @@ class CarSerializer(serializers.ModelSerializer):
             'imageUrl',
             'available',
             'status',
+            'type',
+            'transmission',
+            'fuel',
+            'seats',
+            'location',
+            'description',
             'created_at',
             'updatedAt',
         )
@@ -502,5 +532,4 @@ class EmailLogSerializer(serializers.Serializer):
         instance.data = data
         instance.save()
         return instance
-
-
+    

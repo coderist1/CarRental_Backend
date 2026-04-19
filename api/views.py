@@ -246,6 +246,8 @@ class CarListCreateView(generics.ListCreateAPIView):
 		auth = getattr(self.request, 'auth', None)
 		try:
 			data = dict(self.request.data)
+			if 'image' in data and isinstance(data.get('image'), str) and len(data['image']) > 100:
+				data['image'] = data['image'][:30] + '...[truncated]'
 		except Exception:
 			data = str(self.request.data)
 		logger.warning('Car create attempt: user=%s authenticated=%s auth=%s data=%s',

@@ -32,6 +32,12 @@ class Car(models.Model):
 	daily_rate = models.DecimalField(max_digits=8, decimal_places=2)
 	available = models.BooleanField(default=True)
 	image = models.ImageField(upload_to='car_images/', null=True, blank=True)
+	vehicle_type = models.CharField(max_length=50, blank=True)
+	transmission = models.CharField(max_length=50, blank=True)
+	fuel = models.CharField(max_length=50, blank=True)
+	seats = models.PositiveIntegerField(null=True, blank=True)
+	location = models.CharField(max_length=100, blank=True)
+	description = models.TextField(blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,3 +97,4 @@ class EmailLog(models.Model):
 
 	def __str__(self):
 		return f"{self.log_type}: {self.recipient}"
+	
