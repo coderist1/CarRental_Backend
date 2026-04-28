@@ -19,6 +19,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
+from rest_framework.authtoken.views import obtain_auth_token
 
 
 def root_view(request):
@@ -47,6 +48,7 @@ def root_view(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    path('api-token-auth/', obtain_auth_token),
     path('', root_view),
 ]
 

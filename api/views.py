@@ -71,7 +71,6 @@ class RegisterView(generics.CreateAPIView):
 
 
 class PasswordChangeView(APIView):
-	permission_classes = [permissions.AllowAny]
 
 	def post(self, request):
 		serializer = PasswordChangeSerializer(data=request.data)
@@ -121,7 +120,6 @@ class PasswordResetView(APIView):
 
 
 class MeView(APIView):
-	permission_classes = [permissions.AllowAny]
 
 	def _resolve_target_user(self, request):
 		user_id = request.query_params.get('userId') or request.data.get('userId') or request.data.get('id')
@@ -161,7 +159,6 @@ class MeView(APIView):
 class BookingListCreateView(generics.ListCreateAPIView):
 	queryset = Booking.objects.select_related('renter', 'owner', 'vehicle').all()
 	serializer_class = BookingSerializer
-	permission_classes = [permissions.AllowAny]
 
 	def get_queryset(self):
 		queryset = Booking.objects.select_related('renter', 'owner', 'vehicle').all()
@@ -182,13 +179,11 @@ class BookingListCreateView(generics.ListCreateAPIView):
 class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = Booking.objects.select_related('renter', 'owner', 'vehicle').all()
 	serializer_class = BookingSerializer
-	permission_classes = [permissions.AllowAny]
 
 
 class LogReportListCreateView(generics.ListCreateAPIView):
 	queryset = LogReport.objects.select_related('reporter', 'vehicle').all()
 	serializer_class = LogReportSerializer
-	permission_classes = [permissions.AllowAny]
 
 	def perform_create(self, serializer):
 		# If authenticated, use the requesting user as the reporter.
@@ -201,31 +196,26 @@ class LogReportListCreateView(generics.ListCreateAPIView):
 class LogReportDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = LogReport.objects.select_related('reporter', 'vehicle').all()
 	serializer_class = LogReportSerializer
-	permission_classes = [permissions.AllowAny]
 
 
 class EmailLogListCreateView(generics.ListCreateAPIView):
 	queryset = EmailLog.objects.all()
 	serializer_class = EmailLogSerializer
-	permission_classes = [permissions.AllowAny]
 
 
 class EmailLogDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = EmailLog.objects.all()
 	serializer_class = EmailLogSerializer
-	permission_classes = [permissions.AllowAny]
 
 
 class UserListView(generics.ListAPIView):
 	queryset = User.objects.all().select_related('profile').order_by('-date_joined')
 	serializer_class = UserSerializer
-	permission_classes = [permissions.AllowAny]
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = User.objects.all().select_related('profile')
 	serializer_class = UserUpdateSerializer
-	permission_classes = [permissions.AllowAny]
 
 	def update(self, request, *args, **kwargs):
 		response = super().update(request, *args, **kwargs)
@@ -309,7 +299,6 @@ class CarListCreateView(generics.ListCreateAPIView):
 class CarDetailView(generics.RetrieveUpdateDestroyAPIView):
 	queryset = Car.objects.all()
 	serializer_class = CarSerializer
-	permission_classes = [permissions.AllowAny]
 	parser_classes = [MultiPartParser, FormParser, JSONParser]
 
 	def get_queryset(self):
