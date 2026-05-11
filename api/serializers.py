@@ -286,6 +286,11 @@ class BookingSerializer(serializers.Serializer):
     status = serializers.CharField(required=False)
     createdAt = serializers.DateTimeField(read_only=True)
     updatedAt = serializers.DateTimeField(read_only=True)
+    startDate = serializers.DateTimeField(required=False, allow_null=True)
+    endDate = serializers.DateTimeField(required=False, allow_null=True)
+    start_date = serializers.DateTimeField(required=False, allow_null=True)
+    end_date = serializers.DateTimeField(required=False, allow_null=True)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
 
     def to_internal_value(self, data):
         return dict(data.items()) if hasattr(data, 'items') else dict(data)
@@ -337,6 +342,11 @@ class BookingSerializer(serializers.Serializer):
             'vehicleId': instance.vehicle_id,
             'status': instance.status,
             'rentalId': instance.rental_id,
+            'startDate': instance.start_date,
+            'start_date': instance.start_date,
+            'endDate': instance.end_date,
+            'end_date': instance.end_date,
+            'amount': instance.amount,
             'createdAt': instance.created_at,
             'updatedAt': instance.updated_at,
         }
@@ -348,6 +358,9 @@ class BookingSerializer(serializers.Serializer):
         owner_id = data.pop('ownerId', None) or data.pop('owner', None)
         vehicle_id = data.pop('vehicleId', None) or data.pop('vehicle', None)
         rental_id = data.pop('rental_id', '') or data.pop('rentalId', '')
+        start_date = data.pop('startDate', None) or data.pop('start_date', None)
+        end_date = data.pop('endDate', None) or data.pop('end_date', None)
+        amount = data.pop('amount', None)
 
         renter = None
         request = getattr(self, 'context', {}).get('request')
@@ -377,6 +390,9 @@ class BookingSerializer(serializers.Serializer):
             vehicle=vehicle,
             status=status_value,
             rental_id=rental_id,
+            start_date=start_date,
+            end_date=end_date,
+            amount=amount,
             data=data,
         )
 
@@ -388,6 +404,10 @@ class BookingSerializer(serializers.Serializer):
         renter_id = incoming.pop('renterId', None) or incoming.pop('renter', None)
         owner_id = incoming.pop('ownerId', None) or incoming.pop('owner', None)
         vehicle_id = incoming.pop('vehicleId', None) or incoming.pop('vehicle', None)
+        start_date = incoming.pop('startDate', None) or incoming.pop('start_date', None)
+        end_date = incoming.pop('endDate', None) or incoming.pop('end_date', None)
+        amount = incoming.pop('amount', None)
+        
         if renter_id is not None:
             resolved_renter = self._resolve_user(renter_id, 'renterId')
             if resolved_renter is not None:
@@ -402,6 +422,12 @@ class BookingSerializer(serializers.Serializer):
                 instance.vehicle = resolved_vehicle
         if 'rental_id' in incoming:
             instance.rental_id = incoming.pop('rental_id')
+        if start_date is not None:
+            instance.start_date = start_date
+        if end_date is not None:
+            instance.end_date = end_date
+        if amount is not None:
+            instance.amount = amount
         data.update(incoming)
         instance.data = data
         instance.save()
@@ -458,18 +484,55 @@ class LogReportSerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         data = instance.data or {}
-        return {
+
+        # --- FIX: Build renterName directly from the reporter FK so the
+        #     frontend filter can always match by name even if data{} is empty.
+        renter_name = None
+        if instance.reporter_id:
+            reporter = instance.reporter  # already select_related in all views
+            if reporter:
+                full = f"{reporter.first_name} {reporter.last_name}".strip()
+                renter_name = full or reporter.username
+
+        # --- FIX: Build ownerName from the vehicle's owner if not already
+        #     stored in data{} so the renter detail panel can display it.
+        owner_name = data.get('ownerName')
+        if not owner_name and instance.vehicle_id and instance.vehicle:
+            owner = instance.vehicle.owner
+            if owner:
+                full = f"{owner.first_name} {owner.last_name}".strip()
+                owner_name = full or owner.username
+
+        # --- FIX: Normalise rentalId — model default is '' (blank string).
+        #     Return None when blank so frontend String comparisons work cleanly.
+        rental_id = instance.rental_id if instance.rental_id else None
+
+        rep = {
             'id': instance.id,
             'type': instance.report_type,
+            # Primary reporter FK (integer) — used as the most reliable filter key
             'renterId': instance.reporter_id,
+            # Human-readable name derived from DB — fixes Condition B in the frontend filter
+            'renterName': renter_name,
+            'ownerName': owner_name,
             'vehicleId': instance.vehicle_id,
-            'rentalId': instance.rental_id,
+            # Normalised rentalId — fixes Condition A (was always '' before)
+            'rentalId': rental_id,
             'checkout': instance.checkout,
             'comments': instance.comments or [],
             'createdAt': instance.created_at,
             'updatedAt': instance.updated_at,
-            **data,
         }
+
+        # Merge the JSON data blob last so stored overrides (vehicleName, photos,
+        # odometer, fuelLevel, etc.) win over the computed defaults above,
+        # EXCEPT for the four fields we just fixed — protect those.
+        protected = {'renterId', 'renterName', 'ownerName', 'rentalId'}
+        for key, value in data.items():
+            if key not in protected:
+                rep[key] = value
+
+        return rep
 
     def create(self, validated_data):
         data = dict(validated_data)
