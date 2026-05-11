@@ -186,9 +186,27 @@ class BookingDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class LogReportListCreateView(generics.ListCreateAPIView):
-	queryset = LogReport.objects.select_related('reporter', 'vehicle').all()
+	# FIX: added 'reporter' and 'vehicle__owner' to select_related so that
+	# LogReportSerializer.to_representation can read reporter.first_name /
+	# reporter.last_name and vehicle.owner.* without extra DB queries.
+	queryset = LogReport.objects.select_related('reporter', 'vehicle', 'vehicle__owner').all()
 	serializer_class = LogReportSerializer
 	permission_classes = [permissions.AllowAny]
+
+	def get_queryset(self):
+		queryset = LogReport.objects.select_related('reporter', 'vehicle', 'vehicle__owner').all()
+		# Allow filtering by renterId / reporterId so the frontend can fetch
+		# only the current user's reports without client-side filtering.
+		renter_id = (
+			self.request.query_params.get('renterId')
+			or self.request.query_params.get('reporterId')
+		)
+		if renter_id:
+			try:
+				queryset = queryset.filter(reporter_id=int(renter_id))
+			except (TypeError, ValueError):
+				pass
+		return queryset
 
 	def perform_create(self, serializer):
 		# If authenticated, use the requesting user as the reporter.
@@ -199,9 +217,32 @@ class LogReportListCreateView(generics.ListCreateAPIView):
 
 
 class LogReportDetailView(generics.RetrieveUpdateDestroyAPIView):
-	queryset = LogReport.objects.select_related('reporter', 'vehicle').all()
+	# FIX: same select_related as the list view
+	queryset = LogReport.objects.select_related('reporter', 'vehicle', 'vehicle__owner').all()
 	serializer_class = LogReportSerializer
 	permission_classes = [permissions.AllowAny]
+
+	def perform_update(self, serializer):
+		# Auto-complete booking when checkout is created
+		instance = self.get_object()
+		validated_data = serializer.validated_data
+
+		# Check if checkout data is being added and booking should be auto-completed
+		if 'checkout' in validated_data and validated_data['checkout'] and instance.rental_id:
+			# Find the related booking and mark it as completed
+			from .models import Booking
+			try:
+				booking = Booking.objects.filter(rental_id=instance.rental_id).first()
+				if booking and booking.status != 'completed':
+					booking.status = 'completed'
+					booking.save(update_fields=['status', 'updated_at'])
+			except Exception as e:
+				# Log error but don't fail the checkout creation
+				import logging
+				logger = logging.getLogger(__name__)
+				logger.warning(f'Failed to auto-complete booking for rental_id {instance.rental_id}: {e}')
+
+		return super().perform_update(serializer)
 
 
 class EmailLogListCreateView(generics.ListCreateAPIView):
