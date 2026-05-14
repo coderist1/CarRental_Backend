@@ -334,12 +334,31 @@ class BookingSerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         data = instance.data or {}
+
+        # Hydrate names if missing in the JSON data field
+        vehicle_name = data.get('vehicleName') or data.get('vehicle_name')
+        if not vehicle_name and instance.vehicle:
+            vehicle_name = f"{instance.vehicle.brand} {instance.vehicle.model}".strip()
+
+        renter_name = data.get('renterName') or data.get('renter_name')
+        if not renter_name and instance.renter:
+            full = f"{instance.renter.first_name} {instance.renter.last_name}".strip()
+            renter_name = full or instance.renter.username
+
+        owner_name = data.get('ownerName') or data.get('owner_name')
+        if not owner_name and instance.owner:
+            full = f"{instance.owner.first_name} {instance.owner.last_name}".strip()
+            owner_name = full or instance.owner.username
+
         return {
             **data,
             'id': instance.id,
             'renterId': instance.renter_id,
+            'renterName': renter_name,
             'ownerId': instance.owner_id,
+            'ownerName': owner_name,
             'vehicleId': instance.vehicle_id,
+            'vehicleName': vehicle_name,
             'status': instance.status,
             'rentalId': instance.rental_id,
             'startDate': instance.start_date,
@@ -384,6 +403,11 @@ class BookingSerializer(serializers.Serializer):
 
         owner = self._resolve_user(owner_id, 'ownerId')
         vehicle = self._resolve_car(vehicle_id, 'vehicleId')
+
+        # Hydrate owner from vehicle if missing
+        if not owner and vehicle:
+            owner = vehicle.owner
+
         return Booking.objects.create(
             renter=renter,
             owner=owner,
